@@ -110,3 +110,39 @@ test("groups nested directories even when their parent has no CODEOWNERS", async
       "/tools/catalog-cli/ @tools-team\n",
   );
 });
+
+test("resolves CODEOWNERS paths against rootDir when running from a subdirectory", async () => {
+  // Treat cwd as a subdirectory of the configured repository root.
+  const rootDir = path.dirname(process.cwd());
+  const inputFiles = [
+    {
+      path: "services/auth/login/CODEOWNERS",
+      contents: "* @login-team\n",
+    },
+    {
+      path: path.join(rootDir, "tools/catalog-cli/CODEOWNERS"),
+      contents: "* @tools-team\n",
+    },
+    {
+      path: "services/auth/CODEOWNERS",
+      contents: "* @auth-team\n",
+    },
+    {
+      path: "CODEOWNERS",
+      contents: "* @root-team\n",
+    },
+  ];
+
+  const result = await codeownersJob().transform(inputFiles, {
+    rootDir,
+    outputPath: path.join(rootDir, ".github/CODEOWNERS"),
+  });
+
+  assert.equal(
+    result,
+    "/ @root-team\n" +
+      "/services/auth/ @auth-team\n" +
+      "/services/auth/login/ @login-team\n" +
+      "/tools/catalog-cli/ @tools-team\n",
+  );
+});
