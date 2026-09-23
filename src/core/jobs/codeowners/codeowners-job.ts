@@ -55,6 +55,8 @@ const sortByDirectory = (inputFiles: Source[], rootDir: string): Source[] => {
   const directories = new Map<string, Directory>();
 
   const getDirectory = (directoryPath: string): Directory => {
+    if (directoryPath === ".") return root;
+
     const existing = directories.get(directoryPath);
     if (existing !== undefined) return existing;
 
@@ -73,9 +75,11 @@ const sortByDirectory = (inputFiles: Source[], rootDir: string): Source[] => {
   };
 
   for (const file of inputFiles) {
-    getDirectory(path.dirname(path.resolve(rootDir, file.path))).files.push(
-      file,
-    );
+    // runJob already returns relative paths; only absolute inputs need conversion.
+    const relativePath = path.isAbsolute(file.path)
+      ? path.relative(rootDir, file.path)
+      : file.path;
+    getDirectory(path.dirname(relativePath)).files.push(file);
   }
 
   const sortedFiles: Source[] = [];
