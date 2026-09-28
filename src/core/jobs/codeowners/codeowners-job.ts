@@ -43,65 +43,39 @@ export const codeownersJob = defineJob((options?: CodeownersJobOptions) => ({
   },
 }));
 
-interface Directory {
-  name: string;
-  files: Source[];
-  children: Directory[];
-}
+// Windows accepts both separators; on POSIX, backslashes can be part of a name.
+const pathSeparator = path.sep === "\\" ? /[\\/]/ : path.sep;
 
-// Depth-first order keeps each directory's rules together, with parents first.
-const sortByDirectory = (inputFiles: Source[], rootDir: string): Source[] => {
-  const root: Directory = { name: "", files: [], children: [] };
-  const directories = new Map<string, Directory>();
+// Compare directory segments to keep parents before their descendants.
+const sortByDirectory = (inputFiles: Source[], rootDir: string): Source[] =>
+  inputFiles
+    .map((file) => {
+      const relativePath = path.isAbsolute(file.path)
+        ? path.relative(rootDir, file.path)
+        : file.path;
+      const directoryPath = path.dirname(relativePath);
+      return {
+        file,
+        segments:
+          directoryPath === "." ? [] : directoryPath.split(pathSeparator),
+      };
+    })
+    .sort((a, b) => {
+      const length = Math.min(a.segments.length, b.segments.length);
+      for (let index = 0; index < length; index++) {
+        const left = a.segments[index]!;
+        const right = b.segments[index]!;
+        if (left !== right) {
+          return left.localeCompare(right) || (left < right ? -1 : 1);
+        }
+      }
 
-  const getDirectory = (directoryPath: string): Directory => {
-    if (directoryPath === ".") return root;
-
-    const existing = directories.get(directoryPath);
-    if (existing !== undefined) return existing;
-
-    const directory: Directory = {
-      name: path.basename(directoryPath) || directoryPath,
-      files: [],
-      children: [],
-    };
-    directories.set(directoryPath, directory);
-
-    const parentPath = path.dirname(directoryPath);
-    const parent =
-      parentPath === directoryPath ? root : getDirectory(parentPath);
-    parent.children.push(directory);
-    return directory;
-  };
-
-  for (const file of inputFiles) {
-    // runJob already returns relative paths; only absolute inputs need conversion.
-    const relativePath = path.isAbsolute(file.path)
-      ? path.relative(rootDir, file.path)
-      : file.path;
-    getDirectory(path.dirname(relativePath)).files.push(file);
-  }
-
-  const sortedFiles: Source[] = [];
-  const pending = [root];
-  while (pending.length > 0) {
-    const directory = pending.pop()!;
-    if (directory.files.length > 1) {
-      directory.files.sort((a, b) => a.path.localeCompare(b.path));
-    }
-    // Emit parents first so later nested rules can override their defaults.
-    for (const file of directory.files) sortedFiles.push(file);
-
-    if (directory.children.length > 1) {
-      // Reverse sibling order for the stack; break collation ties with string order.
-      directory.children.sort(
-        (a, b) => b.name.localeCompare(a.name) || (b.name < a.name ? -1 : 1),
+      return (
+        a.segments.length - b.segments.length ||
+        a.file.path.localeCompare(b.file.path)
       );
-    }
-    for (const child of directory.children) pending.push(child);
-  }
-  return sortedFiles;
-};
+    })
+    .map(({ file }) => file);
 
 const toAbsolutePattern = (pattern: string, baseDir: string) => {
   const base = baseDir !== "" ? `/${baseDir}` : "";

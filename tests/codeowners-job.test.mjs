@@ -146,3 +146,75 @@ test("resolves CODEOWNERS paths against rootDir when running from a subdirectory
       "/tools/catalog-cli/ @tools-team\n",
   );
 });
+
+test("keeps locale-equivalent directory names in separate subtrees", async () => {
+  const rootDir = process.cwd();
+  const inputFiles = [
+    {
+      path: "services/é/child/CODEOWNERS",
+      contents: "* @composed-child\n",
+    },
+    {
+      path: "services/e\u0301/CODEOWNERS",
+      contents: "* @decomposed-parent\n",
+    },
+    {
+      path: "services/é/CODEOWNERS",
+      contents: "* @composed-parent\n",
+    },
+    {
+      path: "services/e\u0301/child/CODEOWNERS",
+      contents: "* @decomposed-child\n",
+    },
+  ];
+
+  const result = await codeownersJob().transform(inputFiles, {
+    rootDir,
+    outputPath: path.join(rootDir, ".github/CODEOWNERS"),
+  });
+
+  assert.equal(
+    result,
+    "/services/e\u0301/ @decomposed-parent\n" +
+      "/services/e\u0301/child/ @decomposed-child\n" +
+      "/services/é/ @composed-parent\n" +
+      "/services/é/child/ @composed-child\n",
+  );
+});
+
+test("sorts filenames stably without mutating the input", async () => {
+  const rootDir = process.cwd();
+  const inputFiles = Object.freeze(
+    [
+      {
+        path: "services/auth/Z-CODEOWNERS",
+        contents: "* @last\n",
+      },
+      {
+        path: "services/auth/é-CODEOWNERS",
+        contents: "* @composed\n",
+      },
+      {
+        path: "services/auth/e\u0301-CODEOWNERS",
+        contents: "* @decomposed\n",
+      },
+      {
+        path: "services/auth/A-CODEOWNERS",
+        contents: "* @first\n",
+      },
+    ].map((file) => Object.freeze(file)),
+  );
+
+  const result = await codeownersJob().transform(inputFiles, {
+    rootDir,
+    outputPath: path.join(rootDir, ".github/CODEOWNERS"),
+  });
+
+  assert.equal(
+    result,
+    "/services/auth/ @first\n" +
+      "/services/auth/ @composed\n" +
+      "/services/auth/ @decomposed\n" +
+      "/services/auth/ @last\n",
+  );
+});
