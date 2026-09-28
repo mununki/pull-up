@@ -74,3 +74,39 @@ for (const scenario of [
     }
   });
 }
+
+for (const scenario of [
+  {
+    name: "./",
+    input: ["services/auth/CODEOWNERS", "./services/auth/login/CODEOWNERS"],
+  },
+  {
+    name: "..",
+    input: [
+      "services/auth/CODEOWNERS",
+      "services/../services/auth/login/CODEOWNERS",
+    ],
+  },
+]) {
+  test(`sync normalizes ${scenario.name} in CODEOWNERS input paths before sorting`, async () => {
+    await using fixture = await Fixture.fromDirectory(
+      fileURLToPath(new URL("./fixtures/repo/", import.meta.url)),
+    );
+    const rootDir = fixture.root;
+    const customConfig = `import { codeownersJob } from ${JSON.stringify(coreUrl)};
+export default [codeownersJob({ input: ${JSON.stringify(scenario.input)} })];
+`;
+
+    await mkdir(path.join(rootDir, ".git"));
+    await writeFile(path.join(rootDir, "pullup.config.mjs"), customConfig);
+    await execFileAsync(process.execPath, [cliPath, "sync"], {
+      cwd: rootDir,
+      timeout: 10_000,
+    });
+
+    assert.equal(
+      await readFile(path.join(rootDir, ".github/CODEOWNERS"), "utf8"),
+      "/services/auth/ @auth-team\n" + "/services/auth/login/ @login-team\n",
+    );
+  });
+}
