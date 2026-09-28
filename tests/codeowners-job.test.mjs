@@ -121,6 +121,59 @@ test("resolves relative and absolute CODEOWNERS paths against rootDir", async ()
   );
 });
 
+for (const childPath of [
+  "./services/auth/login/CODEOWNERS",
+  "services/./auth/../../services/auth/login/CODEOWNERS",
+]) {
+  test(`normalizes ${childPath} before ordering parent and child rules`, async () => {
+    await using fixture = await Fixture.fromDirectory(fixtureDirectory);
+    const rootDir = fixture.root;
+    const inputFiles = await readFixtureFiles(rootDir, [
+      childPath,
+      "services/auth/CODEOWNERS",
+    ]);
+
+    const result = await codeownersJob().transform(inputFiles, {
+      rootDir,
+      outputPath: path.join(rootDir, ".github/CODEOWNERS"),
+    });
+
+    assert.equal(
+      result,
+      "/services/auth/ @auth-team\n/services/auth/login/ @login-team\n",
+    );
+  });
+}
+
+test("keeps normalized path aliases stable without mutating the input", async () => {
+  const rootDir = process.cwd();
+  const inputFiles = Object.freeze(
+    [
+      { path: "services/auth/CODEOWNERS", contents: "* @first\n" },
+      {
+        path: path.join(rootDir, "services/auth/CODEOWNERS"),
+        contents: "* @second\n",
+      },
+      {
+        path: "./services/auth/login/../CODEOWNERS",
+        contents: "* @last\n",
+      },
+    ].map((file) => Object.freeze(file)),
+  );
+
+  const result = await codeownersJob().transform(inputFiles, {
+    rootDir,
+    outputPath: path.join(rootDir, ".github/CODEOWNERS"),
+  });
+
+  assert.equal(
+    result,
+    "/services/auth/ @first\n" +
+      "/services/auth/ @second\n" +
+      "/services/auth/ @last\n",
+  );
+});
+
 test("keeps locale-equivalent directory names in separate subtrees", async () => {
   const rootDir = process.cwd();
   const inputFiles = [
